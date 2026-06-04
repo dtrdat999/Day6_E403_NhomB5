@@ -53,10 +53,6 @@ function App() {
   }, []);
 
   const handleUpdateTransaction = async (id: string, updates: Partial<Transaction>) => {
-    setTxData(prev =>
-      prev.map(t => (t.id === id ? { ...t, ...updates } : t))
-    );
-
     try {
       const res = await apiRequest(`/api/transactions/${encodeURIComponent(id)}`, {
         method: 'PATCH',
@@ -72,10 +68,11 @@ function App() {
         return data.transaction as Transaction;
       }
     } catch (error) {
-      console.warn('Không lưu được phân loại vào backend, UI vẫn giữ cập nhật local.', error);
+      console.warn('Không lưu được phân loại vào backend. Không xác nhận thay đổi trên UI.', error);
+      throw error;
     }
 
-    return undefined;
+    throw new Error('Backend không trả về giao dịch đã lưu.');
   };
 
   const handleNavigate = (target: string) => {

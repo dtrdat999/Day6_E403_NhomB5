@@ -28,6 +28,8 @@ interface ButtonData {
   action: string;
 }
 
+const UNCLASSIFIED_EXPENSES_CHIP = '🏷️ Các chi tiêu chưa được phân loại';
+
 export default function MoniChat({ transactions, onUpdateTransaction, onBack }: MoniChatProps) {
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -61,7 +63,7 @@ export default function MoniChat({ transactions, onUpdateTransaction, onBack }: 
 
   const chips = [
     '📊 Phân tích tháng này',
-    '🏷️ Phân loại chi tiêu',
+    UNCLASSIFIED_EXPENSES_CHIP,
     '🔍 Tìm giao dịch lạ',
     '📱 Giải thích khoản Google',
     '🔔 Nhắc thanh toán định kỳ',
@@ -103,7 +105,7 @@ export default function MoniChat({ transactions, onUpdateTransaction, onBack }: 
   const matchFAQ = (text: string) => {
     const lowerText = text.toLowerCase();
     if (lowerText.includes('tháng này') || lowerText.includes('tổng chi') || lowerText.includes('phân tích')) return '📊 Phân tích tháng này';
-    if (lowerText.includes('chưa phân loại') || (lowerText.includes('phân loại') && lowerText.includes('chi tiêu'))) return '🏷️ Phân loại chi tiêu';
+    if (lowerText.includes('chưa phân loại') || (lowerText.includes('phân loại') && lowerText.includes('chi tiêu'))) return UNCLASSIFIED_EXPENSES_CHIP;
     if (lowerText.includes('giao dịch lạ') || lowerText.includes('bất thường') || lowerText.includes('đáng ngờ')) return '🔍 Tìm giao dịch lạ';
     if (lowerText.includes('google') || lowerText.includes('giải thích')) return '📱 Giải thích khoản Google';
     if (lowerText.includes('định kỳ') || lowerText.includes('nhắc nhở') || lowerText.includes('hóa đơn')) return '🔔 Nhắc thanh toán định kỳ';
@@ -185,6 +187,21 @@ export default function MoniChat({ transactions, onUpdateTransaction, onBack }: 
       { label: '✅ Giữ nguyên phân loại', action: `keep-transaction|${tx.id}` },
     ],
     pathTag: '🏷️ Xem lại phân loại',
+  });
+
+  const persistTransactionUpdate = async (id: string, updates: Partial<Transaction>) => {
+    const savedTx = await onUpdateTransaction(id, updates);
+
+    if (!savedTx) {
+      throw new Error('Backend không xác nhận đã lưu giao dịch.');
+    }
+
+    return savedTx;
+  };
+
+  const buildSaveFailedMessage = (txName?: string): Omit<Message, 'id' | 'role'> => ({
+    text: `⚠️ Chưa thể lưu phân loại${txName ? ` cho ${txName}` : ''} vào database.\n\nMoni sẽ không xác nhận đã phân loại cho đến khi backend lưu thành công. Bạn kiểm tra backend ở cổng 8000 rồi thử lại nhé.`,
+    pathTag: '🚫 Chưa lưu database',
   });
 
   const respondToUser = (
@@ -295,16 +312,19 @@ export default function MoniChat({ transactions, onUpdateTransaction, onBack }: 
       }
 
       let wasUpdated = false;
+      let saveFailed = false;
       const updateRegex = /<<UPDATE_TRANSACTION>>\s*(\{.*?\})/g;
       let match;
       while ((match = updateRegex.exec(replyText)) !== null) {
         try {
           const cmd = JSON.parse(match[1]);
           if (cmd.id && cmd.category) {
-            await onUpdateTransaction(cmd.id, { category: cmd.category, confidence: 'high' });
+            await persistTransactionUpdate(cmd.id, { category: cmd.category, confidence: 'high' });
             wasUpdated = true;
           }
-        } catch(e) {}
+        } catch(e) {
+          saveFailed = true;
+        }
       }
       replyText = replyText.replace(updateRegex, '').trim();
 
@@ -321,12 +341,18 @@ export default function MoniChat({ transactions, onUpdateTransaction, onBack }: 
         replyText = replyText.replace(classifyRegex, '').trim();
       }
 
+      if (saveFailed) {
+        replyText = 'AI đã đề xuất cập nhật phân loại, nhưng backend chưa lưu được vào database. Moni chưa xác nhận thay đổi này. Bạn kiểm tra backend ở cổng 8000 rồi thử lại nhé.';
+      } else if (wasUpdated) {
+        replyText = `${replyText}\n\n✅ Thay đổi phân loại đã được lưu vào database.`;
+      }
+
       setMessages(prev => [...prev, {
         id: `moni-${Date.now()}`,
         role: 'moni',
         text: replyText,
         buttons,
-        pathTag: wasUpdated ? '✅ Tự động cập nhật' : '💬 Phản hồi AI',
+        pathTag: saveFailed ? '🚫 Chưa lưu database' : wasUpdated ? '✅ Đã lưu database' : '💬 Phản hồi AI',
       }]);
     } catch (error) {
       setMessages(prev => [...prev, {
@@ -387,6 +413,13 @@ export default function MoniChat({ transactions, onUpdateTransaction, onBack }: 
     // Tạo top 3 categories text
     const sortedCats = Object.entries(categories).sort((a, b) => b[1] - a[1]);
     const topCatsText = sortedCats.slice(0, 5).map(([cat, amt]) => `• ${cat}: ${formatCurrency(amt)}`).join('\n');
+    const categoryTotalCards: CardData[] = sortedCats.map(([cat, amt]) => ({
+      label: cat,
+      value: formatCurrency(amt),
+      confidence: cat === 'Chưa phân loại'
+        ? 'Cần người dùng xác nhận'
+        : 'Đã có danh mục',
+    }));
 
     switch (chip) {
       case '📊 Phân tích tháng này':
@@ -394,7 +427,7 @@ export default function MoniChat({ transactions, onUpdateTransaction, onBack }: 
           text: `📊 **Báo cáo chi tiêu tháng 6/2026**\n\nTổng chi: ${formatCurrency(totalExpense)}\nSố giao dịch: ${transactions.filter(t => t.amount < 0 && !t.excludeFromExpense).length}\n\n📋 Top danh mục:\n${topCatsText}\n\n💡 **Nhận xét của Moni:**\n• Khoản lớn nhất: Thuê phòng ${formatCurrency(3500000)}\n• Có ${unclassified.length} giao dịch chưa phân loại cần kiểm tra\n• Khoản Google Play ${formatCurrency(49000)} đang bị gán "Giải trí" — có thể cần đổi sang "Học tập"\n• Phát hiện ${recurring.length} khoản định kỳ có thể đặt nhắc`,
           buttons: [
             { label: '✏️ Sửa khoản Google Play', action: 'explain-google' },
-            { label: '📋 Phân loại giao dịch chưa rõ', action: 'classify' },
+            { label: '📋 Các chi tiêu chưa được phân loại', action: 'classify' },
             { label: '🔍 Tìm giao dịch lạ', action: 'suspicious' },
             { label: '🔔 Xem khoản định kỳ', action: 'show-recurring' },
           ],
@@ -402,20 +435,24 @@ export default function MoniChat({ transactions, onUpdateTransaction, onBack }: 
         });
         break;
 
-      case '🏷️ Phân loại chi tiêu':
+      case UNCLASSIFIED_EXPENSES_CHIP:
         if (unclassified.length === 0) {
           reply({
-            text: '🏷️ Tất cả giao dịch trong dữ liệu hiện tại đã có phân loại độ tin cậy cao. Bạn vẫn có thể hỏi tên một giao dịch cụ thể để xem lại hoặc đổi danh mục.',
+            text: '🏷️ Tất cả giao dịch trong dữ liệu hiện tại đã có phân loại độ tin cậy cao.\n\nDưới đây là tổng tiền theo từng danh mục chi tiêu hiện tại:',
+            cards: categoryTotalCards,
             pathTag: '✅ Đã phân loại xong',
           });
         } else {
           reply({
-            text: `🏷️ Tôi tìm thấy ${unclassified.length} giao dịch cần bạn xác nhận phân loại:`,
-            cards: unclassified.slice(0, 5).map(tx => ({
-              label: tx.name,
-              value: `${tx.amount < 0 ? '-' : '+'}${formatCurrency(tx.amount)}`,
-              confidence: `→ ${tx.category} • Độ tin cậy: ${getConfidenceLabel(tx.confidence)}`,
-            })),
+            text: `🏷️ Dưới đây là tổng tiền theo từng danh mục chi tiêu hiện tại.\n\nMoni cũng tìm thấy ${unclassified.length} giao dịch cần bạn xác nhận phân loại:`,
+            cards: [
+              ...categoryTotalCards,
+              ...unclassified.slice(0, 5).map(tx => ({
+                label: `Cần phân loại: ${tx.name}`,
+                value: `${tx.amount < 0 ? '-' : '+'}${formatCurrency(tx.amount)}`,
+                confidence: `Hiện tại: ${tx.category} • Độ tin cậy: ${getConfidenceLabel(tx.confidence)}`,
+              })),
+            ],
             buttons: [
               ...unclassified.slice(0, 3).map(tx => ({
                 label: `📝 Xem/sửa ${tx.name}`,
@@ -498,7 +535,14 @@ export default function MoniChat({ transactions, onUpdateTransaction, onBack }: 
       const oldCategory = tx?.category || 'Chưa phân loại';
       const confidence: Transaction['confidence'] = category === 'Cần kiểm tra' ? 'medium' : 'high';
 
-      const savedTx = await onUpdateTransaction(txId, { category, confidence });
+      let savedTx: Transaction;
+      try {
+        savedTx = await persistTransactionUpdate(txId, { category, confidence });
+      } catch (error) {
+        addMessagesWithDelay(category === 'Cần kiểm tra' ? 'Đánh dấu cần kiểm tra' : `Đổi sang ${category}`, buildSaveFailedMessage(tx?.name));
+        return;
+      }
+
       if (txId === 'tx1' && category === 'Học tập / Công cụ làm việc') {
         setGoogleCorrected(true);
       }
@@ -556,8 +600,14 @@ export default function MoniChat({ transactions, onUpdateTransaction, onBack }: 
         break;
 
       case 'correct-google':
+        try {
+          await persistTransactionUpdate('tx1', { category: 'Học tập / Công cụ làm việc', confidence: 'high' });
+        } catch (error) {
+          addMessagesWithDelay('Đổi sang Học tập / Công cụ', buildSaveFailedMessage('Google Play'));
+          break;
+        }
+
         setGoogleCorrected(true);
-        await onUpdateTransaction('tx1', { category: 'Học tập / Công cụ làm việc', confidence: 'high' });
         addMessagesWithDelay('Đổi sang Học tập / Công cụ', {
           text: `✅ Đã cập nhật và lưu thành công!\n\nKhoản Google Play đã được chuyển:\n"Giải trí" → "Học tập / Công cụ làm việc"\n\n📊 Báo cáo đã cập nhật:\n• Giải trí giảm ${formatCurrency(49000)}\n• Học tập / Công cụ tăng ${formatCurrency(49000)}\n\n🧠 Moni đã lưu vào database: lần sau hỏi lại khoản Google, Moni sẽ lấy phân loại mới nhất.`,
           pathTag: '🔄 Correction Path — Đã sửa thành công',
@@ -595,7 +645,13 @@ export default function MoniChat({ transactions, onUpdateTransaction, onBack }: 
           'nma-debt': 'Trả nợ',
         };
         const cat = catMap[action];
-        await onUpdateTransaction('tx2', { category: cat, confidence: 'high' });
+        try {
+          await persistTransactionUpdate('tx2', { category: cat, confidence: 'high' });
+        } catch (error) {
+          addMessagesWithDelay(cat, buildSaveFailedMessage('Nguyễn Minh Anh'));
+          break;
+        }
+
         addMessagesWithDelay(cat, {
           text: `✅ Đã phân loại và lưu khoản Nguyễn Minh Anh vào "${cat}".\n\n🧠 Moni sẽ ghi nhớ trong database: lần sau hỏi lại Nguyễn Minh Anh, Moni sẽ trả về danh mục mới nhất.\n\n💡 Còn ${getUnclassifiedTransactions(transactions).length - 1} giao dịch chưa phân loại khác.`,
           pathTag: '🔄 Correction Path — User đã quyết định',
@@ -624,7 +680,13 @@ export default function MoniChat({ transactions, onUpdateTransaction, onBack }: 
           'npl-personal': 'Chuyển khoản cá nhân',
         };
         const cat2 = catMap2[action];
-        await onUpdateTransaction('tx33', { category: cat2, confidence: 'high' });
+        try {
+          await persistTransactionUpdate('tx33', { category: cat2, confidence: 'high' });
+        } catch (error) {
+          addMessagesWithDelay(cat2, buildSaveFailedMessage('Nguyễn Phương Linh'));
+          break;
+        }
+
         addMessagesWithDelay(cat2, {
           text: `✅ Đã phân loại và lưu khoản Nguyễn Phương Linh vào "${cat2}".\n\n🧠 Moni đã ghi nhớ trong database.`,
           pathTag: '🔄 Correction Path',
@@ -637,7 +699,7 @@ export default function MoniChat({ transactions, onUpdateTransaction, onBack }: 
         break;
 
       case 'classify':
-        handleChip('🏷️ Phân loại chi tiêu');
+        handleChip(UNCLASSIFIED_EXPENSES_CHIP);
         break;
 
       case 'suspicious':
@@ -656,14 +718,28 @@ export default function MoniChat({ transactions, onUpdateTransaction, onBack }: 
         break;
 
       case 'keep-google':
+        try {
+          await persistTransactionUpdate('tx1', { category: 'Giải trí', confidence: 'high' });
+        } catch (error) {
+          addMessagesWithDelay('Giữ là Giải trí', buildSaveFailedMessage('Google Play'));
+          break;
+        }
+
         addMessagesWithDelay('Giữ là Giải trí', {
-          text: '✅ Đã giữ nguyên khoản Google Play trong danh mục "Giải trí".\n\n🧠 Moni sẽ ghi nhớ: Lần sau gặp giao dịch Google Play, Moni sẽ mặc định gán "Giải trí" với độ tin cậy Cao.',
+          text: '✅ Đã giữ nguyên và lưu khoản Google Play trong danh mục "Giải trí".\n\n🧠 Moni đã ghi nhớ trong database: lần sau gặp giao dịch Google Play, Moni sẽ lấy "Giải trí" với độ tin cậy Cao.',
         });
         break;
 
       case 'flag-google':
+        try {
+          await persistTransactionUpdate('tx1', { category: 'Cần kiểm tra', confidence: 'medium' });
+        } catch (error) {
+          addMessagesWithDelay('Đánh dấu cần kiểm tra', buildSaveFailedMessage('Google Play'));
+          break;
+        }
+
         addMessagesWithDelay('Đánh dấu cần kiểm tra', {
-          text: '⚠️ Đã đánh dấu khoản Google Play là "Cần kiểm tra".\n\n📌 Gợi ý: Bạn nên kiểm tra biên lai trên Google Pay hoặc email xác nhận từ Google để xác định dịch vụ cụ thể.',
+          text: '⚠️ Đã đánh dấu và lưu khoản Google Play là "Cần kiểm tra".\n\n📌 Gợi ý: Bạn nên kiểm tra biên lai trên Google Pay hoặc email xác nhận từ Google để xác định dịch vụ cụ thể.',
         });
         break;
 
