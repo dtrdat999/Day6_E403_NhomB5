@@ -6,24 +6,8 @@ import TransactionScreen from './components/TransactionScreen';
 import MoniChat from './components/MoniChat';
 import BottomNav from './components/BottomNav';
 import GuidePanel from './components/GuidePanel';
+import { apiRequest } from './lib/api';
 import './App.css';
-
-const apiRequest = async (path: string, options?: RequestInit) => {
-  const endpoints = [path, `http://127.0.0.1:8000${path}`];
-  let lastError: unknown;
-
-  for (const endpoint of endpoints) {
-    try {
-      const res = await fetch(endpoint, options);
-      if (res.ok) return res;
-      lastError = new Error(`API error ${res.status}`);
-    } catch (error) {
-      lastError = error;
-    }
-  }
-
-  throw lastError instanceof Error ? lastError : new Error('API unavailable');
-};
 
 function App() {
   const [screen, setScreen] = useState('home');

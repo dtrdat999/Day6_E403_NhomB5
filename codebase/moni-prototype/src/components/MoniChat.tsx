@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { Transaction, calculateTotalExpense, formatCurrency, groupByCategory, getUnclassifiedTransactions, getRecurringTransactions } from '../data/transactions';
+import { apiRequest } from '../lib/api';
 
 interface MoniChatProps {
   transactions: Transaction[];
@@ -293,25 +294,11 @@ export default function MoniChat({ transactions, onUpdateTransaction, onBack }: 
   };
 
   const postChat = async (payload: unknown) => {
-    const endpoints = ['/api/chat', 'http://127.0.0.1:8000/api/chat'];
-    let lastError: unknown;
-
-    for (const endpoint of endpoints) {
-      try {
-        const res = await fetch(endpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-
-        if (res.ok) return res;
-        lastError = new Error(`Backend error ${res.status}`);
-      } catch (error) {
-        lastError = error;
-      }
-    }
-
-    throw lastError instanceof Error ? lastError : new Error('Backend unavailable');
+    return apiRequest('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
   };
 
   const processPermittedText = async (userText: string, addUserMessage = true) => {

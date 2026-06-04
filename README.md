@@ -52,6 +52,14 @@ Trong repo này:
 
 Moni chỉ trả lời các vấn đề liên quan đến tài chính cá nhân, tài khoản, giao dịch, chi tiêu, hóa đơn, nhắc thanh toán và phân loại giao dịch. Với câu hỏi ngoài phạm vi, Moni sẽ từ chối và gợi ý người dùng dùng công cụ tìm kiếm hoặc trợ lý phù hợp hơn.
 
+## Link xem prototype public
+
+Sau khi GitHub Actions deploy xong, có thể xem giao diện prototype tại:
+
+https://dtrdat999.github.io/Day6_E403_Moniii/
+
+Link public này dùng để xem giao diện frontend. Các thao tác cần AI backend và lưu database sẽ chạy đầy đủ khi backend được chạy local hoặc được deploy public và cấu hình biến `VITE_API_BASE_URL` cho GitHub Pages.
+
 ## Cách chạy prototype
 
 Chạy backend:
