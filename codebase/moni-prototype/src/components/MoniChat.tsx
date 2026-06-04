@@ -29,6 +29,8 @@ interface ButtonData {
 }
 
 const UNCLASSIFIED_EXPENSES_CHIP = '🏷️ Các chi tiêu chưa được phân loại';
+const OUT_OF_SCOPE_RESPONSE =
+  'Câu hỏi này không nằm trong phạm vi hỗ trợ của Moni. Moni chỉ hỗ trợ các vấn đề liên quan đến tài chính cá nhân, tài khoản, giao dịch, chi tiêu, hóa đơn, nhắc thanh toán và phân loại giao dịch. Với nội dung này, bạn nên sử dụng công cụ tìm kiếm hoặc một trợ lý phù hợp hơn nhé.';
 
 export default function MoniChat({ transactions, onUpdateTransaction, onBack }: MoniChatProps) {
   const [messages, setMessages] = useState<Message[]>([
@@ -118,6 +120,54 @@ export default function MoniChat({ transactions, onUpdateTransaction, onBack }: 
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '')
       .replace(/đ/g, 'd');
+
+  const isOutOfScopeQuery = (text: string) => {
+    const normalizedText = normalizeText(text).trim();
+
+    if (!normalizedText) return false;
+
+    const blockedKeywords = [
+      'chinh tri', 'bau cu', 'dang phai', 'quoc hoi', 'tong thong',
+      'thu tuong', 'chien tranh', 'cach mang', 'giai toan', 'bai toan',
+      'phuong trinh', 'dao ham', 'tich phan', 'hinh hoc', 'chung minh',
+      'lap trinh', 'viet code', 'code', 'coding', 'debug', 'python', 'javascript',
+      'typescript', 'react', 'html', 'css', 'sql', 'thuat toan',
+      'machine learning', 'ai model', 'thuoc', 'chan doan', 'y te',
+      'tinh duc', 'bao luc',
+    ];
+    if (blockedKeywords.some(keyword => normalizedText.includes(keyword))) {
+      return true;
+    }
+
+    const financeKeywords = [
+      'tai chinh', 'tai khoan', 'ca nhan', 'chi tieu', 'giao dich',
+      'phan loai', 'danh muc', 'hoa don', 'thanh toan', 'nhac thanh toan',
+      'ngan sach', 'tiet kiem', 'thu nhap', 'luong', 'vi momo', 'momo',
+      'so du', 'chuyen tien', 'nhan tien', 'nap tien', 'rut tien',
+      'the', 'ngan hang', 'sao ke', 'phi', 'no', 'vay', 'lai',
+      'rui ro giao dich', 'bat thuong', 'google play', 'khoan google',
+      'khoan chi', 'tien thue', 'internet', 'dien', 'nuoc',
+    ];
+    if (financeKeywords.some(keyword => normalizedText.includes(keyword))) {
+      return false;
+    }
+
+    const allowedSmallTalk = [
+      'xin chao', 'chao', 'hello', 'hi', 'cam on', 'thanks',
+      'moni la ai', 'ban la ai', 'ban giup duoc gi', 'huong dan',
+      'demo', 'prototype',
+    ];
+    if (allowedSmallTalk.some(phrase => normalizedText.includes(phrase))) {
+      return false;
+    }
+
+    return true;
+  };
+
+  const buildOutOfScopeMessage = (): Omit<Message, 'id' | 'role'> => ({
+    text: OUT_OF_SCOPE_RESPONSE,
+    pathTag: '🚫 Ngoài phạm vi Moni',
+  });
 
   const findMentionedTransaction = (text: string) => {
     const normalizedText = normalizeText(text);
@@ -265,6 +315,11 @@ export default function MoniChat({ transactions, onUpdateTransaction, onBack }: 
   };
 
   const processPermittedText = async (userText: string, addUserMessage = true) => {
+    if (isOutOfScopeQuery(userText)) {
+      respondToUser(userText, buildOutOfScopeMessage(), addUserMessage);
+      return;
+    }
+
     const matchedFAQ = matchFAQ(userText);
     if (matchedFAQ) {
       handleChip(matchedFAQ, false, addUserMessage);
@@ -370,6 +425,11 @@ export default function MoniChat({ transactions, onUpdateTransaction, onBack }: 
     if (!inputText.trim()) return;
     const userText = inputText.trim();
     setInputText('');
+
+    if (isOutOfScopeQuery(userText)) {
+      addMessagesWithDelay(userText, buildOutOfScopeMessage());
+      return;
+    }
 
     if (hasDataPermission !== true) {
       setPendingText(userText);

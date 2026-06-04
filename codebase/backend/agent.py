@@ -5,6 +5,14 @@ import requests
 import unicodedata
 from database import mock_transactions
 
+OUT_OF_SCOPE_RESPONSE = (
+    "Câu hỏi này không nằm trong phạm vi hỗ trợ của Moni. "
+    "Moni chỉ hỗ trợ các vấn đề liên quan đến tài chính cá nhân, tài khoản, giao dịch, "
+    "chi tiêu, hóa đơn, nhắc thanh toán và phân loại giao dịch. "
+    "Với nội dung này, bạn nên sử dụng công cụ tìm kiếm hoặc một trợ lý phù hợp hơn nhé."
+)
+
+
 class MoniAgent:
     def __init__(self, api_key: str | None = None):
         self.api_key = api_key
@@ -21,6 +29,47 @@ class MoniAgent:
     def normalize_text(self, text: str) -> str:
         normalized = unicodedata.normalize('NFD', text.lower())
         return ''.join(char for char in normalized if unicodedata.category(char) != 'Mn')
+
+    def is_out_of_scope_query(self, query: str) -> bool:
+        query_norm = self.normalize_text(query)
+        stripped_query = query_norm.strip()
+
+        if not stripped_query:
+            return False
+
+        blocked_keywords = [
+            'chinh tri', 'bau cu', 'dang phai', 'quoc hoi', 'tong thong',
+            'thu tuong', 'chien tranh', 'cach mang', 'giai toan', 'bai toan',
+            'phuong trinh', 'dao ham', 'tich phan', 'hinh hoc', 'chung minh',
+            'lap trinh', 'viet code', 'code', 'coding', 'debug', 'python', 'javascript',
+            'typescript', 'react', 'html', 'css', 'sql', 'thuat toan',
+            'machine learning', 'ai model', 'thuoc', 'chan doan', 'y te',
+            'tinh duc', 'bao luc',
+        ]
+        if any(keyword in query_norm for keyword in blocked_keywords):
+            return True
+
+        finance_keywords = [
+            'tai chinh', 'tai khoan', 'ca nhan', 'chi tieu', 'giao dich',
+            'phan loai', 'danh muc', 'hoa don', 'thanh toan', 'nhac thanh toan',
+            'ngan sach', 'tiet kiem', 'thu nhap', 'luong', 'vi momo', 'momo',
+            'so du', 'chuyen tien', 'nhan tien', 'nap tien', 'rut tien',
+            'the', 'ngan hang', 'sao ke', 'phi', 'no', 'vay', 'lai',
+            'rui ro giao dich', 'bat thuong', 'google play', 'khoan google',
+            'khoan chi', 'tien thue', 'internet', 'dien', 'nuoc',
+        ]
+        if any(keyword in query_norm for keyword in finance_keywords):
+            return False
+
+        allowed_small_talk = [
+            'xin chao', 'chao', 'hello', 'hi', 'cam on', 'thanks',
+            'moni la ai', 'ban la ai', 'ban giup duoc gi', 'huong dan',
+            'demo', 'prototype',
+        ]
+        if any(phrase in stripped_query for phrase in allowed_small_talk):
+            return False
+
+        return True
 
     def retrieve_relevant_context(self, query: str, frontend_txs: list[dict], max_results=10):
         keywords = self.extract_keywords(query)
@@ -53,6 +102,9 @@ class MoniAgent:
             
         last_user_message = next((m for m in reversed(messages) if m.get('role') == 'user'), None)
         query = last_user_message.get('content', '') if last_user_message else ''
+
+        if self.is_out_of_scope_query(query):
+            return OUT_OF_SCOPE_RESPONSE
         
         context_data = ''
         if permission_granted:
@@ -60,6 +112,11 @@ class MoniAgent:
             context_data = json.dumps(relevant_transactions, ensure_ascii=False)
             
         system_instruction = f"""Bạn là Moni, trợ lý AI tài chính trên MoMo. Trả lời ngắn gọn, thân thiện, xưng 'mình' gọi 'bạn'.
+
+Phạm vi bắt buộc:
+- Chỉ trả lời các câu hỏi liên quan đến tài chính cá nhân, tài khoản, giao dịch, chi tiêu, hóa đơn, nhắc thanh toán và phân loại giao dịch.
+- Tuyệt đối không trả lời các chủ đề ngoài phạm vi như chính trị, giải toán, lập trình, y tế, tình dục, bạo lực hoặc kiến thức tổng quát không liên quan tài chính.
+- Nếu ngoài phạm vi, trả lời đúng ý sau: "{OUT_OF_SCOPE_RESPONSE}"
 
 Quyền dữ liệu: {'CÓ' if permission_granted else 'KHÔNG'}.
 - Nếu KHÔNG có quyền và user hỏi số liệu: trả lời cần quyền, thêm `<<PERMISSION_REQUEST>>` cuối câu.
@@ -113,6 +170,9 @@ Khi user đổi phân loại giao dịch có sẵn: thêm `<<UPDATE_TRANSACTION>
         query = last_user_message.get('content', '').lower() if last_user_message else ''
         query_norm = self.normalize_text(query)
         data_source = transactions if transactions else mock_transactions
+
+        if self.is_out_of_scope_query(query):
+            return OUT_OF_SCOPE_RESPONSE
 
         data_keywords = [
             'chi tieu', 'thang', 'tong', 'giao dich', 'google',

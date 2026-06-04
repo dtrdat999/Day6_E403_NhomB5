@@ -21,6 +21,7 @@
 - Gợi ý nhắc thanh toán định kỳ.
 - Yêu cầu quyền truy cập trước khi đọc dữ liệu giao dịch.
 - Lưu thay đổi phân loại vào backend database để lần hỏi sau lấy trạng thái mới nhất.
+- Từ chối các câu hỏi ngoài phạm vi tài chính cá nhân như chính trị, giải toán, lập trình hoặc chủ đề nhạy cảm không liên quan.
 
 Moni hoạt động theo mô hình **Augmentation**: AI đưa ra phân tích/gợi ý, người dùng là người xác nhận quyết định cuối cùng.
 
@@ -48,6 +49,8 @@ Trong repo này:
 5. Moni hiển thị giao dịch, phân loại hiện tại, độ tin cậy và các nút đổi danh mục.
 6. Khi người dùng đổi phân loại, backend lưu thay đổi vào database.
 7. Nếu hỏi lại cùng giao dịch, Moni trả về phân loại mới nhất đã lưu.
+
+Moni chỉ trả lời các vấn đề liên quan đến tài chính cá nhân, tài khoản, giao dịch, chi tiêu, hóa đơn, nhắc thanh toán và phân loại giao dịch. Với câu hỏi ngoài phạm vi, Moni sẽ từ chối và gợi ý người dùng dùng công cụ tìm kiếm hoặc trợ lý phù hợp hơn.
 
 ## Cách chạy prototype
 
