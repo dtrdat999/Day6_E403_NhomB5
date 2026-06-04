@@ -1,4 +1,4 @@
-name: Deploy Moni Prototype
+name: Build Moni Prototype
 
 on:
   push:
@@ -8,12 +8,6 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: github-pages
-  cancel-in-progress: false
 
 jobs:
   build:
@@ -40,19 +34,3 @@ jobs:
         env:
           VITE_BASE_PATH: /Day6_E403_Moniii/
           VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
-
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: codebase/moni-prototype/dist
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
