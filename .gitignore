@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+
+# Python cache/runtime files
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local environment and runtime database
+.env
+*.env
+transaction_db.json
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
